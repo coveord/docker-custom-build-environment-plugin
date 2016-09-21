@@ -95,16 +95,30 @@ public class Docker implements Closeable {
         return envVars;
     }
 
-    public boolean pullImage(String image) throws IOException, InterruptedException {
-        ArgumentListBuilder args = dockerCommand()
-            .add("pull", image);
-        
-        OutputStream out = verbose ? listener.getLogger() : new ByteArrayOutputStream();
-        OutputStream err = verbose ? listener.getLogger() : new ByteArrayOutputStream();
-        int status = launcher.launch()
-                .envs(getEnvVars())
-                .cmds(args)
-                .stdout(out).stderr(err).join();
+    public boolean pullImage(String image, String ecrRegion) throws IOException, InterruptedException {
+        int status = 0;
+        if (ecrRegion != null && !ecrRegion.isEmpty()) {
+            // eval "$(aws ecr get-login --region ???)"
+            OutputStream out = verbose ? listener.getLogger() : new ByteArrayOutputStream();
+            OutputStream err = verbose ? listener.getLogger() : new ByteArrayOutputStream();
+            status = launcher.launch()
+                    .envs(getEnvVars())
+                    .cmdAsSingleString("eval \"$(aws ecr get-login --region "+ecrRegion+")\"")
+                    .stdout(out).stderr(err).join();
+        }
+
+        if (status == 0) {
+            ArgumentListBuilder args = dockerCommand()
+                    .add("pull", image);
+
+            OutputStream out = verbose ? listener.getLogger() : new ByteArrayOutputStream();
+            OutputStream err = verbose ? listener.getLogger() : new ByteArrayOutputStream();
+            status = launcher.launch()
+                    .envs(getEnvVars())
+                    .cmds(args)
+                    .stdout(out).stderr(err).join();
+        }
+
         return status == 0;
     }
 
