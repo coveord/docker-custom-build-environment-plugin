@@ -95,16 +95,37 @@ public class Docker implements Closeable {
         return envVars;
     }
 
-    public boolean pullImage(String image, String ecrRegion) throws IOException, InterruptedException {
+    public boolean pullImage(String image, String ecrRegion, String accessKeyId, String secretAccessKey) throws IOException, InterruptedException {
         int status = 0;
         if (ecrRegion != null && !ecrRegion.isEmpty()) {
-            // eval "$(aws ecr get-login --region ???)"
-            OutputStream out = verbose ? listener.getLogger() : new ByteArrayOutputStream();
+            // Normally we use
+            //   eval "$(aws ecr get-login --region ???)"
+            // but that doesn't work through Jenkins' launcher. Instead, we need to
+            // launch the "aws ecr" command and then launch its output.
+            OutputStream ecrOut = new ByteArrayOutputStream();
             OutputStream err = verbose ? listener.getLogger() : new ByteArrayOutputStream();
+
+            EnvVars env = getEnvVars();
+            if (accessKeyId != null && secretAccessKey != null && !accessKeyId.isEmpty() && !secretAccessKey.isEmpty()) {
+                env.override("AWS_ACCESS_KEY_ID", accessKeyId);
+                env.override("AWS_SECRET_ACCESS_KEY", secretAccessKey);
+            }
+
+            ArgumentListBuilder args = new ArgumentListBuilder("aws")
+                    .add("ecr", "get-login").add("--region", ecrRegion);
+
             status = launcher.launch()
-                    .envs(getEnvVars())
-                    .cmdAsSingleString("eval \"$(aws ecr get-login --region "+ecrRegion+")\"")
-                    .stdout(out).stderr(err).join();
+                    .envs(env)
+                    .cmds(args)
+                    .stdout(ecrOut).stderr(err).join();
+            if (status == 0) {
+                OutputStream loginOut = verbose ? listener.getLogger() : new ByteArrayOutputStream();
+
+                status = launcher.launch()
+                        .envs(env)
+                        .cmdAsSingleString(ecrOut.toString())
+                        .stdout(loginOut).stderr(err).join();
+            }
         }
 
         if (status == 0) {
@@ -256,11 +277,12 @@ public class Docker implements Closeable {
         // On some distributions, docker doesn't start docker0 bridge until a container do require it
         // So let's run the container once, running /bin/true so it terminates immediately
 
+        // clechasseur: alpine:3.2 doesn't seem to be accessible publicly, revert to using provided image
         ArgumentListBuilder args = dockerCommand()
                 .add("run", "--rm")
                 .add("--entrypoint")
                 .add("/bin/true")
-                .add("alpine:3.2");
+                .add(image); // instead of "alpine:3.2"
 
         int status = launcher.launch()
                 .envs(getEnvVars())
