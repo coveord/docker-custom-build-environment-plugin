@@ -65,6 +65,9 @@ public class DockerDecoratedLauncher extends Launcher.DecoratedLauncher {
             e.buildEnvVars(environment);
         }
 
+        // clechasseur: this was added by harcher81 to enable the EnvInject plugin to do its magic
+        environment.overrideAll(build.getEnvironment());
+
         return environment;
     }
 
