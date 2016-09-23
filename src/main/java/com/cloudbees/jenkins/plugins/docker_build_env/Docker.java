@@ -1,5 +1,8 @@
 package com.cloudbees.jenkins.plugins.docker_build_env;
 
+import com.amazonaws.auth.AWSCredentials;
+import com.cloudbees.jenkins.plugins.awscredentials.AWSCredentialsHelper;
+import com.cloudbees.jenkins.plugins.awscredentials.AmazonWebServicesCredentials;
 import hudson.EnvVars;
 import hudson.FilePath;
 import hudson.Launcher;
@@ -95,7 +98,7 @@ public class Docker implements Closeable {
         return envVars;
     }
 
-    public boolean pullImage(String image, String ecrRegion, String accessKeyId, String secretAccessKey) throws IOException, InterruptedException {
+    public boolean pullImage(String image, String ecrRegion) throws IOException, InterruptedException {
         int status = 0;
         if (ecrRegion != null && !ecrRegion.isEmpty()) {
             // Normally we use
@@ -105,10 +108,27 @@ public class Docker implements Closeable {
             OutputStream ecrOut = new ByteArrayOutputStream();
             OutputStream err = verbose ? listener.getLogger() : new ByteArrayOutputStream();
 
+            // Look for AWS credentials to use to login to ECR
             EnvVars env = getEnvVars();
-            if (accessKeyId != null && secretAccessKey != null && !accessKeyId.isEmpty() && !secretAccessKey.isEmpty()) {
-                env.override("AWS_ACCESS_KEY_ID", accessKeyId);
-                env.override("AWS_SECRET_ACCESS_KEY", secretAccessKey);
+            String credentialsId = registryEndpoint.getCredentialsId();
+            if (credentialsId != null) {
+                if (credentialsId.startsWith("ecr:")) {
+                    // Strangely the ID is sometimes prepended with this and it breaks ID lookup.
+                    credentialsId = credentialsId.substring(4);
+                }
+                AmazonWebServicesCredentials awsCredsImpl = AWSCredentialsHelper.getCredentials(credentialsId, null);
+                if (awsCredsImpl != null) {
+                    AWSCredentials awsCreds = awsCredsImpl.getCredentials();
+                    if (awsCreds != null) {
+                        String accessKeyId = awsCreds.getAWSAccessKeyId();
+                        String secretAccessKey = awsCreds.getAWSSecretKey();
+                        if (accessKeyId != null && secretAccessKey != null &&
+                                !accessKeyId.isEmpty() && !secretAccessKey.isEmpty()) {
+                            env.override("AWS_ACCESS_KEY_ID", accessKeyId);
+                            env.override("AWS_SECRET_ACCESS_KEY", secretAccessKey);
+                        }
+                    }
+                }
             }
 
             ArgumentListBuilder args = new ArgumentListBuilder("aws")
