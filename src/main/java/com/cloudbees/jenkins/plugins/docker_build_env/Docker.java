@@ -330,11 +330,12 @@ public class Docker implements Closeable {
         // alternatively, let's run the specified image once to discover gateway IP from the container
         // NOTE: alpine:3.2 has a size of 2MB and contains the `/sbin/ip` binary
 
+        // clechasseur: alpine:3.2 doesn't seem to be accessible publicly, revert to using provided image
         args = dockerCommand()
                 .add("run", "--tty", "--rm")
                 .add("--entrypoint")
                 .add("/sbin/ip")
-                .add("alpine:3.2")
+                .add(image) // instead of "alpine:3.2"
                 .add("route");
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
