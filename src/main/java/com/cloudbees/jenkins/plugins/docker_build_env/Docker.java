@@ -98,54 +98,68 @@ public class Docker implements Closeable {
         return envVars;
     }
 
-    public boolean pullImage(String image, String ecrRegion) throws IOException, InterruptedException {
-        int status = 0;
-        if (ecrRegion != null && !ecrRegion.isEmpty()) {
-            // Normally we use
-            //   eval "$(aws ecr get-login --region ???)"
-            // but that doesn't work through Jenkins' launcher. Instead, we need to
-            // launch the "aws ecr" command and then launch its output.
-            OutputStream ecrOut = new ByteArrayOutputStream();
-            OutputStream err = verbose ? listener.getLogger() : new ByteArrayOutputStream();
+    private int loginToEcr(String credentialsId) throws IOException, InterruptedException {
+        // Normally we use
+        //   eval "$(aws ecr get-login --region ???)"
+        // but that doesn't work through Jenkins' launcher. Instead, we need to
+        // launch the "aws ecr" command and then launch its output.
+        OutputStream ecrOut = new ByteArrayOutputStream();
+        OutputStream err = verbose ? listener.getLogger() : new ByteArrayOutputStream();
 
-            // Look for AWS credentials to use to login to ECR
-            EnvVars env = getEnvVars();
-            String credentialsId = registryEndpoint.getCredentialsId();
-            if (credentialsId != null) {
-                if (credentialsId.startsWith("ecr:")) {
-                    // Strangely the ID is sometimes prepended with this and it breaks ID lookup.
-                    credentialsId = credentialsId.substring(4);
-                }
-                AmazonWebServicesCredentials awsCredsImpl = AWSCredentialsHelper.getCredentials(credentialsId, null);
-                if (awsCredsImpl != null) {
-                    AWSCredentials awsCreds = awsCredsImpl.getCredentials();
-                    if (awsCreds != null) {
-                        String accessKeyId = awsCreds.getAWSAccessKeyId();
-                        String secretAccessKey = awsCreds.getAWSSecretKey();
-                        if (accessKeyId != null && secretAccessKey != null &&
-                                !accessKeyId.isEmpty() && !secretAccessKey.isEmpty()) {
-                            env.override("AWS_ACCESS_KEY_ID", accessKeyId);
-                            env.override("AWS_SECRET_ACCESS_KEY", secretAccessKey);
-                        }
+        // Split credentials since they might contain a prefix and region name.
+        EnvVars env = getEnvVars();
+        Pattern pattern = Pattern.compile("ecr:(([a-zA-Z0-9-]+):)?(.+)");
+        Matcher matcher = pattern.matcher(credentialsId);
+        String ecrRegion = null;
+        if (matcher.matches()) {
+            ecrRegion = matcher.group(2);
+            String realCredentialsId = matcher.group(3);
+            AmazonWebServicesCredentials awsCredsImpl = AWSCredentialsHelper.getCredentials(realCredentialsId, null);
+            if (awsCredsImpl != null) {
+                AWSCredentials awsCreds = awsCredsImpl.getCredentials();
+                if (awsCreds != null) {
+                    String accessKeyId = awsCreds.getAWSAccessKeyId();
+                    String secretAccessKey = awsCreds.getAWSSecretKey();
+                    if (accessKeyId != null && secretAccessKey != null &&
+                            !accessKeyId.isEmpty() && !secretAccessKey.isEmpty()) {
+                        env.override("AWS_ACCESS_KEY_ID", accessKeyId);
+                        env.override("AWS_SECRET_ACCESS_KEY", secretAccessKey);
                     }
                 }
             }
+        }
+        if (ecrRegion == null) {
+            // Use us-east-1 if region was not specified (same fallback as Amazon ECR plugin)
+            ecrRegion = "us-east-1";
+        }
 
-            ArgumentListBuilder args = new ArgumentListBuilder("aws")
-                    .add("ecr", "get-login").add("--region", ecrRegion);
+        ArgumentListBuilder args = new ArgumentListBuilder("aws")
+                .add("ecr", "get-login").add("--region", ecrRegion);
 
-            status = launcher.launch()
+        int status = launcher.launch()
                     .envs(env)
                     .cmds(args)
                     .stdout(ecrOut).stderr(err).join();
-            if (status == 0) {
-                OutputStream loginOut = verbose ? listener.getLogger() : new ByteArrayOutputStream();
+        if (status == 0) {
+            OutputStream loginOut = verbose ? listener.getLogger() : new ByteArrayOutputStream();
 
-                status = launcher.launch()
-                        .envs(env)
-                        .cmdAsSingleString(ecrOut.toString())
-                        .stdout(loginOut).stderr(err).join();
-            }
+            status = launcher.launch()
+                    .envs(env)
+                    .cmdAsSingleString(ecrOut.toString())
+                    .stdout(loginOut).stderr(err).join();
+        }
+
+        return status;
+    }
+
+    public boolean pullImage(String image) throws IOException, InterruptedException {
+        int status = 0;
+
+        // Check if credentials have been specified and if they are ECR credentials
+        String credentialsId = registryEndpoint.getCredentialsId();
+        if (credentialsId != null && credentialsId.startsWith("ecr:")) {
+            // Need to login to ECR.
+            status = loginToEcr(credentialsId);
         }
 
         if (status == 0) {

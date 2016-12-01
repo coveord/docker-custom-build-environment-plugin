@@ -18,12 +18,9 @@ public class PullDockerImageSelector extends DockerImageSelector {
 
     public String image;
 
-    public String ecrRegion;
-
     @DataBoundConstructor
-    public PullDockerImageSelector(String image, String ecrRegion) {
+    public PullDockerImageSelector(String image) {
         this.image = image;
-        this.ecrRegion = ecrRegion;
     }
 
     @Override
@@ -31,7 +28,7 @@ public class PullDockerImageSelector extends DockerImageSelector {
         String expandedImage = build.getEnvironment(listener).expand(image);
         if (forcePull || !docker.hasImage(expandedImage)) {
             listener.getLogger().println("Pull Docker image "+expandedImage+" from repository ...");
-            boolean pulled = docker.pullImage(expandedImage, ecrRegion);
+            boolean pulled = docker.pullImage(expandedImage);
             if (!pulled) {
                 listener.getLogger().println("Failed to pull Docker image "+expandedImage);
                 throw new IOException("Failed to pull Docker image "+expandedImage);

@@ -27,7 +27,4 @@ THE SOFTWARE.
     <f:entry field="image" title="Image id/tag">
         <f:textbox/>
     </f:entry>
-    <f:entry field="ecrRegion" title="ECR Region">
-        <f:textbox/>
-    </f:entry>
 </j:jelly>
