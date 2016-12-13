@@ -61,6 +61,10 @@ public class DockerBuildWrapper extends BuildWrapper {
 
     private final boolean privileged;
 
+    private final boolean overrideUserGroup;
+
+    private String user;
+
     private String group;
 
     private String command;
@@ -75,7 +79,7 @@ public class DockerBuildWrapper extends BuildWrapper {
 
     @DataBoundConstructor
     public DockerBuildWrapper(DockerImageSelector selector, String dockerInstallation, DockerServerEndpoint dockerHost, String dockerRegistryCredentials, boolean verbose, boolean privileged,
-                              List<Volume> volumes, String group, String command,
+                              List<Volume> volumes, boolean overrideUserGroup, String user, String group, String command,
                               boolean forcePull,
                               String net, String memory, String cpu) {
         this.selector = selector;
@@ -85,6 +89,8 @@ public class DockerBuildWrapper extends BuildWrapper {
         this.verbose = verbose;
         this.privileged = privileged;
         this.volumes = volumes != null ? volumes : Collections.<Volume>emptyList();
+        this.overrideUserGroup = overrideUserGroup;
+        this.user = user;
         this.group = group;
         this.command = command;
         this.forcePull = forcePull;
@@ -120,6 +126,10 @@ public class DockerBuildWrapper extends BuildWrapper {
     public List<Volume> getVolumes() {
         return volumes;
     }
+
+    public boolean isOverrideUserGroup() { return overrideUserGroup; }
+
+    public String getUser() { return user; }
 
     public String getGroup() {
         return group;
@@ -235,18 +245,24 @@ public class DockerBuildWrapper extends BuildWrapper {
     }
 
     private String whoAmI(Launcher launcher) throws IOException, InterruptedException {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        launcher.launch().cmds("id", "-u").stdout(bos).quiet(true).join();
-        String uid = bos.toString().trim();
+        String uidGid = null;
+        if (isOverrideUserGroup()) {
+            String uid = user;
+            if (isEmpty(user)) {
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                launcher.launch().cmds("id", "-u").stdout(bos).quiet(true).join();
+                uid = bos.toString().trim();
+            }
 
-        String gid = group;
-        if (isEmpty(group)) {
-            ByteArrayOutputStream bos2 = new ByteArrayOutputStream();
-            launcher.launch().cmds("id", "-g").stdout(bos2).quiet(true).join();
-            gid = bos2.toString().trim();
+            String gid = group;
+            if (isEmpty(group)) {
+                ByteArrayOutputStream bos2 = new ByteArrayOutputStream();
+                launcher.launch().cmds("id", "-g").stdout(bos2).quiet(true).join();
+                gid = bos2.toString().trim();
+            }
+            uidGid = uid + ":" + gid;
         }
-        return uid+":"+gid;
-
+        return uidGid;
     }
 
     @Extension

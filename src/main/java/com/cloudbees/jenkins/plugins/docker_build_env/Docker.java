@@ -35,6 +35,8 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static org.apache.commons.lang.StringUtils.isEmpty;
+
 /**
  * @author <a href="mailto:nicolas.deloof@gmail.com">Nicolas De Loof</a>
  */
@@ -401,8 +403,10 @@ public class Docker implements Closeable {
         List<String> prefix = dockerCommandArgs();
         prefix.add("exec");
         prefix.add("--tty");
-        prefix.add("--user");
-        prefix.add(userId);
+        if (!isEmpty(userId)) {
+            prefix.add("--user");
+            prefix.add(userId);
+        }
         prefix.add(container);
         prefix.add("env");
 
