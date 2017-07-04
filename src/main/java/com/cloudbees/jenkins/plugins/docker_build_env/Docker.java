@@ -135,7 +135,7 @@ public class Docker implements Closeable {
         }
 
         ArgumentListBuilder args = new ArgumentListBuilder("aws")
-                .add("ecr", "get-login").add("--region", ecrRegion);
+                .add("ecr", "get-login").add("--region", ecrRegion).add("--no-include-email");
 
         int status = launcher.launch()
                     .envs(env)
